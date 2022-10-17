@@ -1,0 +1,133 @@
+---
+title: "Jiashu Liu Data Visualization"
+output: html_document
+date: "2022-10-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this plot, I combined the dataset DOHMH_Childcare_Center_Inspections with ZipCode data from NYU Open data and created a map of the Average Violation Rate Percent of NYC in specifically in 2022. The map clearly shows that the Average Violation Rate is generally higher in the Staten Island and Queens. More future research needs to be conducted to explore the reasons behind it.
+
+```{r}
+library(readr)
+DOHMH_Childcare_Center_Inspections <- read_csv("DOHMH_Childcare_Center_Inspections.csv", 
+    col_types = cols(`Permit Expiration` = col_character()))
+```
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(ggmap)
+library(broom)
+library(stringr)
+library(viridis)
+library(sf)
+library(scales)
+options("rgdal_show_exportToProj4_warnings"="none")
+library(rgdal)
+library(RColorBrewer)
+library(leaflet)
+```
+```{r}
+zip_code<-st_read("/Users/jiashuliu/Desktop/Stats_Club/Data_Visualization_Contest/ZIP_CODE_040114") 
+```
+
+```{r}
+#Data Cleaning stuff
+DOHMH_Childcare_Center_Inspections$`Inspection Date`<-as.Date(DOHMH_Childcare_Center_Inspections$`Inspection Date`, format =  "%m/%d/%Y") 
+DOHMH_Childcare_Center_Inspections$`Inspection Date`<-str_replace_all(DOHMH_Childcare_Center_Inspections$`Inspection Date`, "00", "20")
+
+Inspection_data<-DOHMH_Childcare_Center_Inspections %>% 
+  arrange(`Inspection Date`) %>% 
+  rename(ZIPCODE = "ZipCode") 
+```
+
+```{r}
+#Wrangling datasets
+nyc<-merge(Inspection_data, zip_code, by = "ZIPCODE")
+nyc_total<-nyc %>% 
+  mutate(nyc_fips=paste(ST_FIPS, CTY_FIPS, sep = "")) %>% 
+  subset(select= -c(URL.y, URL.x, `Facility Type`, `Day Care ID`, `Health Code Sub Section`, `Permit Number`, `Permit Expiration`, Status, `Date Permitted`, `Building Identification Number`)) %>% 
+  filter(`Inspection Date`>"2022-01-01") %>% 
+  arrange(`Inspection Date`)
+```
+
+```{r}
+nyc_basemap <-  get_stamenmap(
+    bbox = c(left = -74.7276, bottom =40.3141, right = -73.2307, top = 41.0783), 
+    maptype = "terrain-background",
+    source = "stamen",
+    zoom = 11
+)
+df1<-sf::st_as_sf(nyc_total)
+ggmap(nyc_basemap)+
+#ggplot(df1) + 
+  geom_sf(data= df1,aes(fill=`Average Violation Rate Percent`), inherit.aes = FALSE)+
+  scale_fill_viridis_c(
+      name = "Average Violation Rate Percent",
+      #labels = percent_format(),
+      option = "cividis"
+    )+
+  coord_sf(crs = st_crs(4326))
+```
+```{r}
+#mapping NYC
+df1<-sf::st_as_sf(nyc_total)
+JL_plot<-ggplot(df1) + 
+  geom_sf(aes(fill=factor(`Average Violation Rate Percent`)))+
+  scale_fill_brewer(palette = "magma")+
+  labs(title = "NYC 2022 Average Violation Rate Percent",
+       fill = "Average Violation Rate Percent",
+       caption = "Viz by @JiashuLiu") 
+ggsave(JL_plot, file="data_contest_updated.png")
+```
+
+```{r}
+# df1<-sf::st_as_sf(nyc_total)
+# pal <- colorNumeric("viridis", 
+#                      domain = df1$`Average Violation Rate Percent`) 
+# 
+# leaflet(df1) %>% 
+#   addTiles() %>% 
+#   addPolygons(
+#     #skips drawing the borders:
+#     stroke = FALSE, 
+#     #fills according to variable of hex colors:
+#     fillColor = ~pal(`Average Violation Rate Percent`), 
+#     #changes transparency, like alpha in ggplot
+#     fillOpacity = 0.7, 
+#     #how much to simplify the plot when zooming:
+#     smoothFactor = 0.5, 
+#     #changes what happens to the shape when we mouse over it
+#     highlight = highlightOptions(weight = 5, 
+#                                  color = "black",
+#                                  fillOpacity = 0.9,
+#                                  bringToFront = FALSE)) %>%
+#   # Add a legend
+#   addLegend(pal = pal, 
+#             values = ~`Average Violation Rate Percent`, 
+#             opacity = 0.5, 
+#             title = NULL,
+#             position = "bottomright") 
+```
+
+```{r}
+# df<-nyc_total %>% 
+#   separate(col = geometry, into = c('Latitude', 'Longitude '), sep = '\\,') 
+#  
+```
+
+```{r}
+library(leaflet) 
+
+# reproject
+nyc_WGS84 <- st_transform(df1, 4326)
+
+leaflet(nyc_WGS84) %>%
+  addPolygons()
+```
+
+
